@@ -583,6 +583,79 @@ Z-Wave JS UI sends no `X-Frame-Options` headers — it can be embedded as an ifr
 
 ---
 
+## Network Infrastructure — UDM-SE + USW Flex 2.5G
+
+### The Problem — UDM-SE Internal Switch Limitations
+
+The **UniFi Dream Machine SE** has a built-in 8-port switch, but it has two critical limitations for a homelab with PoE-powered IoT coordinators and SBCs:
+
+1. **1 Gbps backplane** — The internal switch ports share a 1 Gbps backplane to the router core. With multiple active PoE devices, throughput bottlenecks appear under load.
+2. **Unreliable PoE negotiation** — Sensitive devices like PoE Zigbee/Z-Wave coordinators and Thread border routers experience occasional PoE flapping and timeouts during 802.3af/at negotiation on the UDM-SE's internal switch.
+
+### The Fix — Dedicated USW Flex 2.5G
+
+A **USW Flex 2.5G** was added as the dedicated switch for all IoT and SBC devices. This moves high-draw and sensitive PoE gear off the UDM-SE's internal switch onto a purpose-built PoE switch with a much larger power budget.
+
+### Physical Topology
+
+```
+Internet
+  │
+  ▼
+UDM-SE
+  │
+  ├── Port 1 (10G SFP+) ──► NAS
+  │                           └── 10G backbone for Docker, HA, NFS
+  │
+  ├── Port 9 (2.5G RJ45) ──► USW Flex 2.5G
+  │                           │
+  │                           ├── Port 1 ──► Odroid N2+ #1 — Network Core
+  │                           ├── Port 2 ──► Odroid N2+ #2 — Media Server
+  │                           ├── Port 3 ──► Zigbee Coordinator    [100M FE]
+  │                           ├── Port 4 ──► Z-Wave Coordinator    [100M FE]
+  │                           └── Port 5 ──► Thread Border Router  [100M FE]
+  │
+  └── Remaining ports ──► APs, other LAN devices
+```
+
+### Speed Tiers
+
+| Connection | Speed | Devices | Why |
+|-----------|-------|---------|-----|
+| UDM-SE → NAS | 10G SFP+ | NAS | Maximum throughput for Docker pulls, NFS media, backups |
+| UDM-SE → USW Flex | 2.5G RJ45 | Uplink | Aggregate headroom for all downstream devices |
+| USW Flex → Odroids | 1G RJ45 | Odroid N2+ #1, #2 | Full line rate — Docker, Jellyfin streaming, DNS |
+| USW Flex → IoT | 100M FE | Zigbee, Z-Wave, Thread coordinators | Hard-coded to 100 Mbps Fast Ethernet (see below) |
+
+### IoT Device Optimization — 100 Mbps + STP Disabled
+
+The three IoT coordinators (Zigbee, Z-Wave, Thread) are hard-coded to **100 Mbps Full Duplex (Amber LED)** with **STP disabled** on their switch ports:
+
+| Setting | Value | Why |
+|---------|-------|-----|
+| Link speed | 100 Mbps FE (forced) | These devices have 100M NICs — auto-negotiation to 1G causes link flapping |
+| STP | Disabled | Prevents Spanning Tree Protocol handshake timeouts that cause 30-second delays on link-up |
+| PoE | 802.3af (15.4W) | Standard PoE — all three devices draw <5W each |
+
+**How to configure in UniFi:**
+1. UniFi OS → **Network → Devices → USW Flex 2.5G → Ports**
+2. Select each IoT port
+3. **Port Profile** → Edit → Link Speed: **100 Mbps FE**
+4. **STP** → Disable (per-port toggle)
+
+### Result
+
+| Tier | Speed | What's on it |
+|------|-------|-------------|
+| Backbone | 10G SFP+ | NAS ↔ UDM-SE (Docker, NFS, all traffic) |
+| Aggregate | 2.5G RJ45 | UDM-SE ↔ USW Flex uplink |
+| Compute | 1G RJ45 | Odroids (DNS, media, monitoring) |
+| IoT | 100M FE | Zigbee, Z-Wave, Thread coordinators (stable, no flapping) |
+
+> The network is now running at its theoretical peak: 10G backbone, 2.5G aggregate to the switch, stable 1G for SBCs, and locked 100M for IoT controllers that no longer flap or time out during PoE/STP negotiation.
+
+---
+
 ## Odroid N2+ SBC Deployment
 
 Two **Hardkernel Odroid N2+** single-board computers serve as dedicated Docker hosts, offloading network and media services from the NAS.
