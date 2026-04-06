@@ -1,0 +1,39 @@
+# Environment / secrets
+.env
+
+# NPM runtime data and certificates (contains private keys)
+configs/nginx-proxy-manager/
+
+# Home Assistant auto-generated files
+configs/homeassistant/.storage/
+configs/homeassistant/.cloud/
+configs/homeassistant/automations.yaml
+configs/homeassistant/scripts.yaml
+configs/homeassistant/scenes.yaml
+configs/homeassistant/home-assistant_v2.db
+configs/homeassistant/home-assistant_v2.db-shm
+configs/homeassistant/home-assistant_v2.db-wal
+configs/homeassistant/home-assistant.log*
+configs/homeassistant/tts/
+configs/homeassistant/blueprints/
+configs/homeassistant/themes/
+configs/homeassistant/deps/
+configs/homeassistant/.HA_VERSION
+
+# HACS (downloaded from GitHub at install, not config)
+configs/homeassistant/custom_components/hacs/
+configs/homeassistant/custom_components/hacs/.git/
+
+# ESPHome build artifacts and device-specific configs
+configs/esphome/.esphome/
+configs/esphome/*.yaml
+!configs/esphome/.gitkeep
+
+# Matter server runtime data
+configs/matter-server/
+
+# Z-Wave JS UI runtime data (contains security keys)
+configs/zwavejsui/
+
+# Odroid service data
+odroid/configs/

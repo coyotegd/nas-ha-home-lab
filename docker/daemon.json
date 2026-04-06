@@ -1,0 +1,4 @@
+{
+  "data-root": "/volume1/@docker",
+  "storage-driver": "btrfs"
+}

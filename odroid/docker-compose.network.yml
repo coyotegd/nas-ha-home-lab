@@ -1,0 +1,68 @@
+services:
+  adguard:
+    container_name: adguard
+    image: adguard/adguardhome:latest
+    ports:
+      - 53:53/tcp
+      - 53:53/udp
+      - 8053:80
+      - 3053:3000
+    volumes:
+      - ./configs/adguard/work:/opt/adguardhome/work
+      - ./configs/adguard/conf:/opt/adguardhome/conf
+    restart: unless-stopped
+
+  grist:
+    container_name: grist
+    image: gristlabs/grist:latest
+    ports:
+      - 8484:8484
+    volumes:
+      - ./configs/grist:/persist
+    environment:
+      - GRIST_SESSION_SECRET=${GRIST_SESSION_SECRET}
+    restart: unless-stopped
+
+  vaultwarden:
+    container_name: vaultwarden
+    image: vaultwarden/server:latest
+    ports:
+      - 8001:8001
+    volumes:
+      - ./configs/vaultwarden:/data
+    environment:
+      - ADMIN_TOKEN=${VW_ADMIN_TOKEN}
+      - ROCKET_ADDRESS=0.0.0.0
+      - ROCKET_PORT=8001
+      - ROCKET_TLS={certs="/data/cert.pem",key="/data/key.pem"}
+    restart: unless-stopped
+
+  beszel:
+    container_name: beszel
+    image: henrygd/beszel:latest
+    ports:
+      - 8090:8090
+    volumes:
+      - ./configs/beszel:/beszel_data
+    restart: unless-stopped
+
+  beszel-agent:
+    container_name: beszel-agent
+    image: henrygd/beszel-agent:latest
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - PORT=45876
+      - KEY=${BESZEL_KEY}
+    restart: unless-stopped
+
+  portainer:
+    container_name: portainer
+    image: portainer/portainer-ce:latest
+    ports:
+      - 9443:9443
+    volumes:
+      - ./configs/portainer:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped

@@ -1,0 +1,376 @@
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 172.16.0.0/12     # Docker bridge networks
+    - 192.168.0.0/16    # LAN subnet (adjust to yours)
+
+panel_custom:
+  # UGOS NAS web UI (opens in new tab, navigates back)
+  - name: ugos-panel
+    url_path: ugos
+    sidebar_title: "UGOS NAS"
+    sidebar_icon: "mdi:nas"
+    module_url: /local/ugos-panel.js
+
+  # GL-S200 Thread Border Router (opens in new tab, navigates back)
+  - name: s200-panel
+    url_path: s200
+    sidebar_title: "S200 Matter CoAP"
+    sidebar_icon: "mdi:access-point-network"
+    module_url: /local/s200-panel.js
+
+  # Beszel monitoring (new tab — sends X-Frame-Options)
+  - name: newtab-panel
+    url_path: beszel
+    sidebar_title: "Beszel"
+    sidebar_icon: "mdi:monitor-dashboard"
+    module_url: /local/newtab-panel.js
+    config:
+      url: "http://ODROID1_IP:8090"
+      name: "Beszel"
+
+  # Grist spreadsheet (iframe — no blocking headers)
+  - name: iframe-panel
+    url_path: grist
+    sidebar_title: "Grist"
+    sidebar_icon: "mdi:table-large"
+    module_url: /local/iframe-panel.js
+    config:
+      url: "http://ODROID1_IP:8484"
+
+  # AdGuard Home (new tab — login cookies don't persist in iframe)
+  - name: newtab-panel
+    url_path: adguard
+    sidebar_title: "AdGuard Home"
+    sidebar_icon: "mdi:shield-check"
+    module_url: /local/newtab-panel.js
+    config:
+      url: "http://ODROID1_IP:8053"
+      name: "AdGuard Home"
+
+  # Vaultwarden (new tab — blocks iframing)
+  - name: newtab-panel
+    url_path: vaultwarden
+    sidebar_title: "Vaultwarden"
+    sidebar_icon: "mdi:shield-lock"
+    module_url: /local/newtab-panel.js
+    config:
+      url: "https://ODROID1_IP:8001"
+      name: "Vaultwarden"
+
+  # Portainer Odroid 1 (new tab — blocks iframing)
+  - name: newtab-panel
+    url_path: portainer1
+    sidebar_title: "Portainer (Core)"
+    sidebar_icon: "mdi:docker"
+    module_url: /local/newtab-panel.js
+    config:
+      url: "https://ODROID1_IP:9443"
+      name: "Portainer - Odroid 1"
+
+  # Portainer Odroid 2 (new tab — blocks iframing)
+  - name: newtab-panel
+    url_path: portainer2
+    sidebar_title: "Portainer (Media)"
+    sidebar_icon: "mdi:docker"
+    module_url: /local/newtab-panel.js
+    config:
+      url: "https://ODROID2_IP:9443"
+      name: "Portainer - Odroid 2"
+
+  # Jellyfin (new tab — blocks iframing)
+  - name: newtab-panel
+    url_path: jellyfin
+    sidebar_title: "Jellyfin"
+    sidebar_icon: "mdi:multimedia"
+    module_url: /local/newtab-panel.js
+    config:
+      url: "http://ODROID2_IP:8096"
+      name: "Jellyfin"
+
+  # Z-Wave JS UI (iframe — no blocking headers)
+  - name: iframe-panel
+    url_path: zwavejsui
+    sidebar_title: "Z-Wave JS"
+    sidebar_icon: "mdi:z-wave"
+    module_url: /local/iframe-panel.js
+    config:
+      url: "http://YOUR_NAS_IP:8091"
+
+# ── GL-S200 Thread Dev Board Sensors (JSON-RPC bridge) ──
+
+command_line:
+  - sensor:
+      name: "TDB 1 Sensors"
+      unique_id: tdb1_sensors_YOUR_DEV_ID_1
+      command: "python3 /config/scripts/s200_tdb_sensors.py YOUR_DEV_ID_1"
+      scan_interval: 60
+      command_timeout: 15
+      value_template: "{{ value_json.temperature | round(1) }}"
+      unit_of_measurement: "°C"
+      json_attributes:
+        - humidity
+        - temperature
+        - light
+        - press
+        - connected
+        - dev_id
+  - sensor:
+      name: "TDB 1 LED Status"
+      unique_id: tdb1_led_status
+      command: "python3 /config/scripts/s200_tdb_led.py YOUR_TDB1_IPV6 status"
+      scan_interval: 120
+      command_timeout: 20
+      value_template: >-
+        {% if value_json.led_strip_status is defined and value_json.led_strip_status[0].on_off == 1 %}on{% else %}off{% endif %}
+      json_attributes:
+        - led_strip_status
+        - err_code
+  - sensor:
+      name: "TDB 2 Sensors"
+      unique_id: tdb2_sensors_YOUR_DEV_ID_2
+      command: "python3 /config/scripts/s200_tdb_sensors.py YOUR_DEV_ID_2"
+      scan_interval: 60
+      command_timeout: 15
+      value_template: "{{ value_json.temperature | round(1) }}"
+      unit_of_measurement: "°C"
+      json_attributes:
+        - humidity
+        - temperature
+        - light
+        - press
+        - connected
+        - dev_id
+  - sensor:
+      name: "TDB 2 LED Status"
+      unique_id: tdb2_led_status
+      command: "python3 /config/scripts/s200_tdb_led.py YOUR_TDB2_IPV6 status"
+      scan_interval: 120
+      command_timeout: 20
+      value_template: >-
+        {% if value_json.led_strip_status is defined and value_json.led_strip_status[0].on_off == 1 %}on{% else %}off{% endif %}
+      json_attributes:
+        - led_strip_status
+        - err_code
+
+# ── TDB LED helpers (input_number for RGB + brightness) ──
+
+input_number:
+  tdb1_led_r:
+    name: TDB 1 LED Red
+    min: 0
+    max: 255
+    step: 1
+  tdb1_led_g:
+    name: TDB 1 LED Green
+    min: 0
+    max: 255
+    step: 1
+  tdb1_led_b:
+    name: TDB 1 LED Blue
+    min: 0
+    max: 255
+    step: 1
+  tdb2_led_r:
+    name: TDB 2 LED Red
+    min: 0
+    max: 255
+    step: 1
+  tdb2_led_g:
+    name: TDB 2 LED Green
+    min: 0
+    max: 255
+    step: 1
+  tdb2_led_b:
+    name: TDB 2 LED Blue
+    min: 0
+    max: 255
+    step: 1
+  tdb1_led_brightness:
+    name: TDB 1 LED Brightness
+    min: 0
+    max: 255
+    step: 1
+    initial: 255
+  tdb2_led_brightness:
+    name: TDB 2 LED Brightness
+    min: 0
+    max: 255
+    step: 1
+    initial: 255
+
+# ── TDB PIR motion state (set by webhook, auto-clears after 30s) ──
+
+input_boolean:
+  tdb1_pir_motion:
+    name: TDB 1 PIR Motion Raw
+    icon: mdi:motion-sensor
+  tdb2_pir_motion:
+    name: TDB 2 PIR Motion Raw
+    icon: mdi:motion-sensor
+
+# ── TDB encoder/button routing ──
+
+input_select:
+  tdb1_encoder_target:
+    name: TDB 1 Encoder Target
+    options:
+      - TDB 1
+      - TDB 2
+    initial: TDB 1
+    icon: mdi:knob
+  tdb2_encoder_target:
+    name: TDB 2 Encoder Target
+    options:
+      - TDB 1
+      - TDB 2
+    initial: TDB 2
+    icon: mdi:knob
+  tdb1_button_target:
+    name: TDB 1 Button Target
+    options:
+      - TDB 1
+      - TDB 2
+    initial: TDB 1
+    icon: mdi:gesture-tap-button
+  tdb2_button_target:
+    name: TDB 2 Button Target
+    options:
+      - TDB 1
+      - TDB 2
+    initial: TDB 2
+    icon: mdi:gesture-tap-button
+
+# ── TDB LED shell commands (CoAP via SSH to S200) ──
+
+shell_command:
+  tdb1_led_on: "python3 /config/scripts/s200_tdb_led.py YOUR_TDB1_IPV6 on"
+  tdb1_led_off: "python3 /config/scripts/s200_tdb_led.py YOUR_TDB1_IPV6 off"
+  tdb1_led_color: "python3 /config/scripts/s200_tdb_led.py YOUR_TDB1_IPV6 color {{ ((states('input_number.tdb1_led_r') | float(255)) * (states('input_number.tdb1_led_brightness') | float(255)) / 255) | int }} {{ ((states('input_number.tdb1_led_g') | float(0)) * (states('input_number.tdb1_led_brightness') | float(255)) / 255) | int }} {{ ((states('input_number.tdb1_led_b') | float(0)) * (states('input_number.tdb1_led_brightness') | float(255)) / 255) | int }}"
+  tdb2_led_on: "python3 /config/scripts/s200_tdb_led.py YOUR_TDB2_IPV6 on"
+  tdb2_led_off: "python3 /config/scripts/s200_tdb_led.py YOUR_TDB2_IPV6 off"
+  tdb2_led_color: "python3 /config/scripts/s200_tdb_led.py YOUR_TDB2_IPV6 color {{ ((states('input_number.tdb2_led_r') | float(255)) * (states('input_number.tdb2_led_brightness') | float(255)) / 255) | int }} {{ ((states('input_number.tdb2_led_g') | float(0)) * (states('input_number.tdb2_led_brightness') | float(255)) / 255) | int }} {{ ((states('input_number.tdb2_led_b') | float(0)) * (states('input_number.tdb2_led_brightness') | float(255)) / 255) | int }}"
+
+# ── Template entities: TDB LED lights + sensors + binary_sensors ──
+
+template:
+  - light:
+      - name: "TDB 1 LEDs"
+        unique_id: tdb1_leds
+        optimistic: true
+        state: "{{ is_state('sensor.tdb_1_led_status', 'on') }}"
+        level: "{{ states('input_number.tdb1_led_brightness') | float(255) | int }}"
+        rgb: "({{ states('input_number.tdb1_led_r') | float(255) | int }}, {{ states('input_number.tdb1_led_g') | float(255) | int }}, {{ states('input_number.tdb1_led_b') | float(255) | int }})"
+        turn_on:
+          - action: script.tdb1_led_turn_on
+        turn_off:
+          - action: script.tdb1_led_turn_off
+        set_rgb:
+          - action: script.tdb1_led_set_rgb
+            data:
+              r: "{{ r }}"
+              g: "{{ g }}"
+              b: "{{ b }}"
+              brightness: "{{ brightness if brightness is defined else (state_attr('light.tdb_1_leds', 'brightness') | default(255, true)) }}"
+        set_level:
+          - action: script.tdb1_led_set_level
+            data:
+              brightness: "{{ brightness }}"
+      - name: "TDB 2 LEDs"
+        unique_id: tdb2_leds
+        optimistic: true
+        state: "{{ is_state('sensor.tdb_2_led_status', 'on') }}"
+        level: "{{ states('input_number.tdb2_led_brightness') | float(255) | int }}"
+        rgb: "({{ states('input_number.tdb2_led_r') | float(255) | int }}, {{ states('input_number.tdb2_led_g') | float(255) | int }}, {{ states('input_number.tdb2_led_b') | float(255) | int }})"
+        turn_on:
+          - action: script.tdb2_led_turn_on
+        turn_off:
+          - action: script.tdb2_led_turn_off
+        set_rgb:
+          - action: script.tdb2_led_set_rgb
+            data:
+              r: "{{ r }}"
+              g: "{{ g }}"
+              b: "{{ b }}"
+              brightness: "{{ brightness if brightness is defined else (state_attr('light.tdb_2_leds', 'brightness') | default(255, true)) }}"
+        set_level:
+          - action: script.tdb2_led_set_level
+            data:
+              brightness: "{{ brightness }}"
+  - sensor:
+      - name: "TDB 1 Temperature"
+        unique_id: tdb1_temperature
+        state: "{{ state_attr('sensor.tdb_1_sensors', 'temperature') | round(1) }}"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+      - name: "TDB 1 Humidity"
+        unique_id: tdb1_humidity
+        state: "{{ state_attr('sensor.tdb_1_sensors', 'humidity') | round(1) }}"
+        unit_of_measurement: "%"
+        device_class: humidity
+        state_class: measurement
+      - name: "TDB 1 Pressure"
+        unique_id: tdb1_pressure
+        state: "{{ state_attr('sensor.tdb_1_sensors', 'press') | round(1) }}"
+        unit_of_measurement: "kPa"
+        device_class: pressure
+        state_class: measurement
+      - name: "TDB 1 Light"
+        unique_id: tdb1_light
+        state: "{{ state_attr('sensor.tdb_1_sensors', 'light') }}"
+        unit_of_measurement: "lx"
+        device_class: illuminance
+        state_class: measurement
+      - name: "TDB 2 Temperature"
+        unique_id: tdb2_temperature
+        state: "{{ state_attr('sensor.tdb_2_sensors', 'temperature') | round(1) }}"
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state_class: measurement
+      - name: "TDB 2 Humidity"
+        unique_id: tdb2_humidity
+        state: "{{ state_attr('sensor.tdb_2_sensors', 'humidity') | round(1) }}"
+        unit_of_measurement: "%"
+        device_class: humidity
+        state_class: measurement
+      - name: "TDB 2 Pressure"
+        unique_id: tdb2_pressure
+        state: "{{ state_attr('sensor.tdb_2_sensors', 'press') | round(1) }}"
+        unit_of_measurement: "kPa"
+        device_class: pressure
+        state_class: measurement
+      - name: "TDB 2 Light"
+        unique_id: tdb2_light
+        state: "{{ state_attr('sensor.tdb_2_sensors', 'light') }}"
+        unit_of_measurement: "lx"
+        device_class: illuminance
+        state_class: measurement
+  - binary_sensor:
+      - name: "TDB 1 Connected"
+        unique_id: tdb1_connected
+        state: "{{ state_attr('sensor.tdb_1_sensors', 'connected') }}"
+        device_class: connectivity
+      - name: "TDB 1 Motion"
+        unique_id: tdb1_pir_motion
+        state: "{{ is_state('input_boolean.tdb1_pir_motion', 'on') }}"
+        device_class: motion
+      - name: "TDB 2 Connected"
+        unique_id: tdb2_connected
+        state: "{{ state_attr('sensor.tdb_2_sensors', 'connected') }}"
+        device_class: connectivity
+      - name: "TDB 2 Motion"
+        unique_id: tdb2_pir_motion
+        state: "{{ is_state('input_boolean.tdb2_pir_motion', 'on') }}"
+        device_class: motion
