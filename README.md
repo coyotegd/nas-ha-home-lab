@@ -533,6 +533,16 @@ PIR motion flow: `TDB PIR sensor → S200 firmware automation → HTTP POST webh
 
 **Fix:** Removed `delay: 30s` from both LED reaction automations. Made them purely reactive — trigger on `binary_sensor.tdb_X_motion` changing to **either** `on` or `off`, with an `if/then/else` mirroring the state to the LED. The custom component's 30s cancel-and-restart timer is now the single source of truth.
 
+#### Refactor: Dynamic Device Discovery (April 7, 2026)
+
+Replaced hardcoded device registries with dynamic discovery so new TDB boards can be added through the HA UI.
+
+**Bridge:** Removed hardcoded `DEVICES` dict. Bridge now calls `otbr-gateway.get_device_list` via JSON-RPC on startup + every 60s to discover TDB boards and their IPv6 addresses. Sends `device_list` message to WebSocket clients on connect and on changes. Handles IPv6 changes on Thread network rejoin automatically.
+
+**Custom component:** Config flow v1→v2 migration. Added options flow with Add Device (queries bridge for discovered devices, user selects, sets name + webhook ID) and Remove Device. All platform files read devices from `entry.options["devices"]` via coordinator instead of hardcoded constants. Existing TDB 1 + TDB 2 are auto-migrated preserving webhook IDs.
+
+**Adding a new board:** Plug in → configure S200 webhook → HA → Integrations → S200 TDB → Configure → Add Device → entities appear automatically.
+
 ---
 
 ### Step 12: TubesZB Z-Wave PoE Kit + Z-Wave JS UI
