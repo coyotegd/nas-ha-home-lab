@@ -516,6 +516,23 @@ Since the TDB boards use proprietary CoAP (not Matter), three bridge paths are n
 
 The S200's JSON-RPC API requires multi-step challenge-response auth (challenge → crypt hash → MD5 → login → session). HA's built-in REST platform can't handle this, hence the Python helper scripts.
 
+#### Architecture Evolution: s200-bridge + Custom Component
+
+The original Python-script architecture (above table) was replaced by a unified **s200-bridge** daemon + **s200_tdb** custom HA component:
+
+- **s200-bridge** — async Python daemon (Docker container, host network, port 8765). Handles JSON-RPC auth/session, persistent SSH for CoAP LED commands, sensor polling (3s), LED status polling (10s), WebSocket server for HA.
+- **s200_tdb custom component** — HA integration that connects to the bridge via WebSocket. Exposes sensors, RGB lights, connectivity, and PIR motion binary sensors. Registers webhooks for PIR events (posted directly by S200 firmware, not through the bridge).
+
+PIR motion flow: `TDB PIR sensor → S200 firmware automation → HTTP POST webhook → HA s200_tdb component → binary_sensor.tdb_X_motion (30s auto-reset timer) → automation → light.tdb_X_leds`
+
+#### Bug Fix: PIR Dual-Timer Desync (April 7, 2026)
+
+**Symptom:** After the 30-second LED timeout, the PIR sensor would not re-trigger LEDs for an unpredictable delay — sometimes minutes. One board consistently worse than the other.
+
+**Root cause:** Two independent 30-second timers ran in parallel — one in the custom component's webhook handler (`async_call_later` with cancel-and-restart) controlling `binary_sensor.tdb_X_motion`, and one in the HA automation (`delay: 30s` with `mode: restart`) controlling the LED. When a PIR event fired mid-window, the webhook timer restarted but the automation's `binary_sensor` trigger (which requires a state *change* to `on`) did not re-fire because motion was already `on`. This caused the timers to drift: the automation's LED-off fired first, then subsequent PIR webhooks arrived while motion was still `True` (no state change), so the automation ignored them until the webhook timer finally expired and reset motion to `False`.
+
+**Fix:** Removed `delay: 30s` from both LED reaction automations. Made them purely reactive — trigger on `binary_sensor.tdb_X_motion` changing to **either** `on` or `off`, with an `if/then/else` mirroring the state to the LED. The custom component's 30s cancel-and-restart timer is now the single source of truth.
+
 ---
 
 ### Step 12: TubesZB Z-Wave PoE Kit + Z-Wave JS UI
