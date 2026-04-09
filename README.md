@@ -541,7 +541,14 @@ Replaced hardcoded device registries with dynamic discovery so new TDB boards ca
 
 **Custom component:** Config flow v1→v2 migration. Added options flow with Add Device (queries bridge for discovered devices, user selects, sets name + webhook ID) and Remove Device. All platform files read devices from `entry.options["devices"]` via coordinator instead of hardcoded constants. Existing TDB 1 + TDB 2 are auto-migrated preserving webhook IDs.
 
-**Adding a new board:** Plug in → configure S200 webhook → HA → Integrations → S200 TDB → Configure → Add Device → entities appear automatically.
+**Adding a new board:**
+1. Flash v1.3.0 firmware via USB and commission on the S200 (see [gl-thread-dev-board README](https://github.com/coyotegd/gl-thread-dev-board) Recovery section for full procedure)
+2. Once the board joins Thread, the bridge auto-discovers it within 60 seconds
+3. In HA: **Settings → Devices & Services → S200 TDB Boards** — click the **cog wheel (⚙)** on the `S200 TDB Boards` line item (not the `+ Add Entry` button — that creates a second integration instance)
+4. Select **Add Device** → choose the board from the discovered list → set a name and webhook ID → Submit
+5. All sensor entities and the RGB light entity appear automatically — no manual YAML
+
+> **Note:** The `+ Add Entry` button at the bottom of the Integrations page adds a new independent instance of the whole integration (a second WebSocket connection to a second bridge). To add a board to the existing integration, always use the **cog wheel → Configure → Add Device** path.
 
 ---
 
