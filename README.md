@@ -548,7 +548,7 @@ Replaced hardcoded device registries with dynamic discovery so new TDB boards ca
 4. Select **Add Device** → choose the board from the discovered list → set a name and webhook ID → Submit
 5. All sensor entities and the RGB light entity appear automatically — no manual YAML
 
-> **Note:** The `+ Add Entry` button at the bottom of the Integrations page adds a new independent instance of the whole integration (a second WebSocket connection to a second bridge). To add a board to the existing integration, always use the **cog wheel → Configure → Add Device** path.
+> **Note:** The `+ Add Entry` button at the bottom of the Integrations page adds a new independent instance of the whole integration (a second WebSocket connection to a second bridge). This would only be relevant if you had a **second GL-S200** on a separate Thread network, each running its own `s200-bridge` instance on a different port. In a single-S200 setup there is no use for it — ignore it and always use the **cog wheel → Configure → Add Device** path to add boards to the existing integration.
 
 ---
 
