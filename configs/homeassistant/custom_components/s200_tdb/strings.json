@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "GL-S200 TDB Boards",
+        "description": "Connect to the s200-bridge WebSocket relay daemon.",
+        "data": {
+          "host": "Bridge Host",
+          "port": "Bridge Port"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to bridge. Is s200-bridge running?"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Manage TDB Devices",
+        "menu_options": {
+          "add_device": "Add a new TDB device",
+          "remove_device": "Remove an existing device"
+        }
+      },
+      "add_device": {
+        "title": "Add TDB Device",
+        "description": "Select a device discovered by the bridge. Configure the webhook ID to match what you set in the S200 web UI (GL Dev Board → Automations → Webhook URL).",
+        "data": {
+          "device": "Device",
+          "name": "Friendly Name",
+          "webhook_id": "PIR Webhook ID"
+        }
+      },
+      "remove_device": {
+        "title": "Remove TDB Device",
+        "description": "Select a device to remove. Its entities will be removed on next reload.",
+        "data": {
+          "device": "Device"
+        }
+      }
+    },
+    "error": {
+      "no_devices": "No devices discovered from bridge. Is it running and connected to the S200?",
+      "no_new_devices": "All discovered devices have already been added.",
+      "no_devices_to_remove": "No devices configured to remove."
+    },
+    "abort": {
+      "no_devices": "No devices discovered from bridge. Is it running and connected to the S200?",
+      "no_new_devices": "All discovered devices have already been added.",
+      "no_devices_to_remove": "No devices configured to remove."
+    }
+  }
+}

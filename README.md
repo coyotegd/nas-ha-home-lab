@@ -550,6 +550,53 @@ Replaced hardcoded device registries with dynamic discovery so new TDB boards ca
 
 > **Note:** The `+ Add Entry` button at the bottom of the Integrations page adds a new independent instance of the whole integration (a second WebSocket connection to a second bridge). This would only be relevant if you had a **second GL-S200** on a separate Thread network, each running its own `s200-bridge` instance on a different port. In a single-S200 setup there is no use for it — ignore it and always use the **cog wheel → Configure → Add Device** path to add boards to the existing integration.
 
+#### Fix: Integration Card Icon Not Showing (April 9, 2026)
+
+**Symptom:** The `s200_tdb` integration card in **Settings → Devices & Services** showed a light grey "Icon not available" placeholder on a white square, while every built-in integration showed its logo correctly.
+
+**Root cause:** HA's `brands` component (which serves all integration icons) checks whether a custom integration has a `brand` subdirectory inside the component folder. The property `integration.has_branding` returns `True` only if `"brand"` appears in the top-level directory listing. If the folder is missing, HA skips local files entirely and falls back to the CDN at `brands.home-assistant.io` — which has no entry for `s200_tdb` — and serves the grey placeholder.
+
+Icons were originally placed directly in `custom_components/s200_tdb/` (e.g. `icon.png` at the root). This does not work.
+
+**Fix:** Create a `brand/` subdirectory and place icons there:
+
+```
+custom_components/s200_tdb/
+└── brand/
+    ├── icon.png      ← 256×256 RGBA, transparent background
+    └── logo.png      ← 512×256 RGBA, transparent background
+```
+
+Icons were generated from the CAD render (`hardware_files/gl-thread-dev-board.png` in the [gl-thread-dev-board repo](https://github.com/coyotegd/gl-thread-dev-board)) using AI background removal (`rembg`):
+
+```bash
+docker run --rm \
+  -v /path/to/hardware_files:/input \
+  -v /path/to/custom_components/s200_tdb:/output \
+  python:3.11-slim bash -c "
+    pip install rembg[cpu] -q && python3 -c \"
+from rembg import remove
+from PIL import Image
+
+src = Image.open('/input/gl-thread-dev-board.png')
+result = remove(src)
+
+# icon.png — 256×256 square
+icon = result.copy(); icon.thumbnail((220,220), Image.LANCZOS)
+canvas = Image.new('RGBA',(256,256),(0,0,0,0))
+canvas.paste(icon, ((256-icon.width)//2,(256-icon.height)//2), icon)
+canvas.save('/output/brand/icon.png')
+
+# logo.png — 512×256 wide
+logo_img = result.copy(); logo_img.thumbnail((460,220), Image.LANCZOS)
+logo = Image.new('RGBA',(512,256),(0,0,0,0))
+logo.paste(logo_img, ((512-logo_img.width)//2,(256-logo_img.height)//2), logo_img)
+logo.save('/output/brand/logo.png')
+\""
+```
+
+Icons are served by HA at `/api/brands/integration/s200_tdb/icon.png` (requires a rotating WebSocket access token — 403 from `curl` is expected and normal; the frontend fetches the token automatically).
+
 ---
 
 ### Step 12: TubesZB Z-Wave PoE Kit + Z-Wave JS UI
