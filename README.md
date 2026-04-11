@@ -520,7 +520,7 @@ The S200's JSON-RPC API requires multi-step challenge-response auth (challenge �
 
 The original Python-script architecture (above table) was replaced by a unified **s200-bridge** daemon + **s200_tdb** custom HA component:
 
-- **s200-bridge** — async Python daemon (Docker container, host network, port 8765). Handles JSON-RPC auth/session, persistent SSH for CoAP LED commands, sensor polling (3s), LED status polling (10s), WebSocket server for HA.
+- **s200-bridge** — async Python daemon (Docker container, host network, port 8765). Handles JSON-RPC auth/session, persistent SSH for CoAP LED commands, sensor polling (3s), LED status polling (3s), WebSocket server for HA. Also auto-provisions S200 `gl_dev_automation` PIR webhook entries for every discovered device via the `HA_WEBHOOK_BASE` env var.
 - **s200_tdb custom component** — HA integration that connects to the bridge via WebSocket. Exposes sensors, RGB lights, connectivity, and PIR motion binary sensors. Registers webhooks for PIR events (posted directly by S200 firmware, not through the bridge).
 
 PIR motion flow: `TDB PIR sensor → S200 firmware automation → HTTP POST webhook → HA s200_tdb component → binary_sensor.tdb_X_motion (30s auto-reset timer) → automation → light.tdb_X_leds`
@@ -532,6 +532,16 @@ PIR motion flow: `TDB PIR sensor → S200 firmware automation → HTTP POST webh
 **Root cause:** Two independent 30-second timers ran in parallel — one in the custom component's webhook handler (`async_call_later` with cancel-and-restart) controlling `binary_sensor.tdb_X_motion`, and one in the HA automation (`delay: 30s` with `mode: restart`) controlling the LED. When a PIR event fired mid-window, the webhook timer restarted but the automation's `binary_sensor` trigger (which requires a state *change* to `on`) did not re-fire because motion was already `on`. This caused the timers to drift: the automation's LED-off fired first, then subsequent PIR webhooks arrived while motion was still `True` (no state change), so the automation ignored them until the webhook timer finally expired and reset motion to `False`.
 
 **Fix:** Removed `delay: 30s` from both LED reaction automations. Made them purely reactive — trigger on `binary_sensor.tdb_X_motion` changing to **either** `on` or `off`, with an `if/then/else` mirroring the state to the LED. The custom component's 30s cancel-and-restart timer is now the single source of truth.
+
+#### Fix: PIR Webhook ID Mismatch + Auto-Provisioning (April 10, 2026)
+
+**Symptom:** PIR motion never triggered in HA for any board.
+
+**Root cause:** The S200 `gl_dev_automation` entries had been manually created with IDs `tdb1-pir-motion` / `tdb2-pir-motion`, but the `s200_tdb` custom component generates webhook IDs in the format `tdb-{dev_id[-8:]}-pir-motion` (e.g. `tdb-45279077-pir-motion`). The S200 was POSTing to the wrong URL — HA registered its listeners, but nothing ever called them. TDB 3 had no automation at all.
+
+**Fix:** Corrected all three S200 automation entries to use the component-generated IDs. Added the missing TDB 3 entry. Added `_provision_pir_automations()` to the bridge's `discover_devices()` loop so this can never drift again — on every 60s cycle the bridge reconciles S200 automations against the known device list, creating missing entries and removing stale ones.
+
+**`HA_WEBHOOK_BASE` env var** (add to docker-compose `environment`): `http://<NAS_IP>:8123`. The bridge uses this to build the correct webhook URL. If HA moves IP or port, update this and restart the bridge — all S200 automations are reconciled on the next discovery cycle.
 
 #### Refactor: Dynamic Device Discovery (April 7, 2026)
 
