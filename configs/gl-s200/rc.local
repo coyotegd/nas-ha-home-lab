@@ -1,0 +1,36 @@
+# Put your custom commands here that should be executed once
+# the system init finished. By default this file does nothing.
+
+. /lib/functions/gl_util.sh
+remount_ubifs
+
+# ── Thread auto-start fix ────────────────────────────────
+#
+# The GL-S200's gl-otbr-mgmt daemon issues "ot-ctl ifconfig up"
+# and "ot-ctl thread start" during early boot, but fires while
+# the RCP co-processor is still being flashed via Xmodem. The
+# Thread start silently fails and the daemon does not retry —
+# leaving the border router in "detached" state indefinitely.
+#
+# This delayed start waits 30 seconds for the RCP to be ready,
+# then checks Thread state and starts it if needed.
+#
+# Verify after reboot:
+#   logread | grep thread-autostart
+#
+(
+  sleep 30
+  STATE=$(ot-ctl state 2>/dev/null | head -1)
+  if [ "$STATE" = "disabled" ] || [ "$STATE" = "detached" ]; then
+    logger -t thread-autostart "Thread state is $STATE after boot, starting Thread..."
+    ot-ctl ifconfig up
+    ot-ctl thread start
+    sleep 10
+    STATE=$(ot-ctl state 2>/dev/null | head -1)
+    logger -t thread-autostart "Thread state after start: $STATE"
+  else
+    logger -t thread-autostart "Thread already running: $STATE"
+  fi
+) &
+
+exit 0

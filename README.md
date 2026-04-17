@@ -20,6 +20,7 @@ If you're searching for "ugreen docker overlay btrfs", "DXP 2800 homelab", "Z-Wa
 | `configs/homeassistant/www/newtab-panel.js` | Custom HA sidebar panel — opens URL in new tab |
 | `configs/homeassistant/scripts/s200_tdb_sensors.py` | GL-S200 TDB sensor bridge script (JSON-RPC auth) |
 | `configs/homeassistant/scripts/s200_tdb_led.py` | GL-S200 TDB LED control script (SSH + CoAP) |
+| `configs/gl-s200/rc.local` | GL-S200 startup script — Thread auto-start fix |
 | `odroid/docker-compose.network.yml` | Odroid #1 compose — AdGuard, Grist, Vaultwarden, Beszel, Portainer |
 | `odroid/docker-compose.media.yml` | Odroid #2 compose — Jellyfin, Beszel Agent, Portainer |
 | `odroid/daemon.json` | Odroid Docker engine config (SD card data-root) |
@@ -607,6 +608,45 @@ logo.save('/output/brand/logo.png')
 
 Icons are served by HA at `/api/brands/integration/s200_tdb/icon.png` (requires a rotating WebSocket access token — 403 from `curl` is expected and normal; the frontend fetches the token automatically).
 
+#### Fix: GL-S200 Thread Network Fails to Start After Reboot (April 17, 2026)
+
+**Symptom:** After a GL-S200 power cycle, **all** Matter and CoAP/Thread devices become unreachable. Zigbee devices (separate coordinator) continue working fine. matter-server logs show `Timeout waiting for mDNS resolution` in an infinite retry loop. SSH to the S200 may hang during key exchange if the device is in a degraded state.
+
+**Root cause:** The GL-S200's `gl-otbr-mgmt` daemon issues `ot-ctl ifconfig up` + `ot-ctl thread start` during early boot, but fires while the RCP co-processor is still receiving a firmware flash via Xmodem (~5 seconds at 115 KB). The Thread start silently fails and the daemon **does not retry**. The border router stays in `detached` state indefinitely — no Thread mesh, no mDNS proxy for Matter devices, no CoAP routing.
+
+**Diagnosis:**
+```bash
+ssh root@S200_IP 'ot-ctl state'
+# Returns "detached" instead of "leader" or "router"
+```
+
+**Manual recovery:**
+```bash
+ssh root@S200_IP 'ot-ctl ifconfig up; ot-ctl thread start'
+# Wait 10-15 seconds, then verify:
+ssh root@S200_IP 'ot-ctl state'
+# Should return "leader" or "router"
+```
+
+**Permanent fix:** Deploy [`configs/gl-s200/rc.local`](configs/gl-s200/rc.local) to the GL-S200's `/etc/rc.local`. This adds a 30-second delayed Thread start that runs in the background after boot, checking state and starting Thread if the daemon's early attempt failed.
+
+**To deploy:**
+```bash
+# Copy to GL-S200 (replaces default rc.local)
+scp configs/gl-s200/rc.local root@S200_IP:/etc/rc.local
+```
+
+**To edit via GL-S200 admin panel:** Browse to `http://S200_IP/cgi-bin/luci` → **System → Startup** → scroll to **Local Startup** text box.
+
+**To verify after reboot:**
+```bash
+ssh root@S200_IP 'logread | grep thread-autostart'
+# Expected: "Thread state is detached after boot, starting Thread..."
+#           "Thread state after start: router"
+```
+
+> **Impact:** This is a critical reliability issue. Without this fix, any GL-S200 power loss (outage, UPS failover, accidental unplug) leaves the entire Thread mesh offline until someone manually SSHs in and restarts the stack. All Matter devices and CoAP dev boards go unavailable in HA with no automatic recovery.
+
 ---
 
 ### Step 12: TubesZB Z-Wave PoE Kit + Z-Wave JS UI
@@ -865,6 +905,9 @@ curl -s http://localhost:8091/health                      # Z-Wave JS UI healthy
 | VS Code can't write files | Overlay root is root-owned. `sudo chown` a directory on `/volume1/` |
 | Port 53 in use (AdGuard on Odroid) | Disable `systemd-resolved`: `sudo systemctl disable --now systemd-resolved` |
 | Matter integration can't connect | Verify `matter-server` container is running, check `ws://localhost:5580/ws` |
+| All Matter + CoAP devices unreachable, Zigbee fine | GL-S200 Thread stack is `detached` after reboot. See Step 11 → Thread auto-start fix |
+| matter-server: `Timeout waiting for mDNS resolution` loop | Same root cause — Thread network down on GL-S200. SSH in and check `ot-ctl state` |
+| SSH to GL-S200 hangs during key exchange | S200 services degraded. Power-cycle the device, then verify Thread started |
 | TubesZB ESPHome UI only serves HTTP | Expected — ESP32-PoE firmware serves HTTP only, not HTTPS |
 
 ---
