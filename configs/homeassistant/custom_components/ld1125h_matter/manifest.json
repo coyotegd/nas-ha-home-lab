@@ -1,0 +1,11 @@
+{
+  "domain": "ld1125h_matter",
+  "name": "LD1125H Matter Radar",
+  "version": "1.0.0",
+  "codeowners": ["@coyotegd"],
+  "config_flow": true,
+  "dependencies": ["matter"],
+  "documentation": "https://github.com/coyotegd/esp32-h2-Matter-HomeAssistant",
+  "iot_class": "local_push",
+  "requirements": []
+}

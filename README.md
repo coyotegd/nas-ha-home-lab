@@ -714,6 +714,177 @@ Z-Wave JS UI sends no `X-Frame-Options` headers — it can be embedded as an ifr
 
 ---
 
+### Step 13: GL-S200 Thread Uptime Monitoring & Auto-Recovery
+
+The GL-S200's OTBR daemon can crash or become unresponsive over time (memory leak, firmware bug), leaving the Thread radio in a dead state while the device stays on the LAN. All Matter and CoAP Thread devices become unreachable. The `rc.local` fix from Step 11 handles boot-time failures, but this addresses **runtime failures** — the Thread radio dying hours or days after a clean boot.
+
+This step adds three things:
+1. **OTBR health sensor** — polls the GL-S200's OTBR REST API every 60 seconds
+2. **Failsafe automation** — detects Thread radio failure, notifies, and power-cycles the GL-S200 via UniFi PoE
+3. **Scheduled daily reboot** — preventive 4 AM PoE power cycle to avoid the failure entirely
+
+#### Prerequisites
+
+- GL-S200 powered via **PoE splitter** on a UniFi managed switch port
+- UniFi integration in HA with the **port power cycle button** enabled (enabled by default)
+- HA Companion App configured for push notifications
+
+#### A. OTBR Health Sensor
+
+Add to `configuration.yaml`:
+
+```yaml
+# GL-S200 OTBR Thread health monitoring
+rest:
+  - resource: "http://S200_IP:8081/node/state"
+    scan_interval: 60
+    sensor:
+      - name: "OTBR Thread State"
+        value_template: "{{ value | replace('\"', '') }}"
+        icon: "mdi:access-point-network"
+```
+
+This creates `sensor.otbr_thread_state` which shows `router` or `leader` when the Thread network is healthy. When the S200 is unreachable or the Thread radio has crashed, the sensor goes `unavailable`.
+
+> **Why not just use `device_tracker.gl_s200`?** The UniFi device tracker only checks LAN presence. The S200 can be on the network with a perfectly working Wi-Fi connection but have a dead Thread radio. The OTBR REST sensor catches this case.
+
+#### B. Thread Failsafe Automation
+
+Add to `automations.yaml`:
+
+```yaml
+- id: 'gl_s200_thread_failsafe'
+  alias: GL-S200 Thread Failsafe
+  description: >-
+    Detects Thread radio failure on the GL-S200 and power-cycles it via
+    UniFi PoE port. Sends mobile notification before and after.
+  triggers:
+  - trigger: state
+    entity_id:
+    - sensor.otbr_thread_state
+    to: unavailable
+    for:
+      minutes: 2
+    id: otbr_unavailable
+  - trigger: state
+    entity_id:
+    - device_tracker.gl_s200
+    to: not_home
+    for:
+      minutes: 2
+    id: s200_offline
+  conditions:
+  - condition: template
+    value_template: >-
+      {{ (as_timestamp(now()) -
+          as_timestamp(state_attr('automation.gl_s200_thread_failsafe',
+            'last_triggered') | default(0))) > 900 }}
+  actions:
+  - action: notify.YOUR_MOBILE_APP
+    data:
+      title: "Thread Radio Offline"
+      message: >-
+        GL-S200 Thread border router is down (trigger: {{ trigger.id }}).
+        Power cycling PoE port on Flex switch now.
+  - action: button.press
+    target:
+      entity_id: button.YOUR_SWITCH_PORT_POWER_CYCLE
+  - delay:
+      seconds: 120
+  - action: homeassistant.update_entity
+    target:
+      entity_id: sensor.otbr_thread_state
+  - delay:
+      seconds: 10
+  - action: notify.YOUR_MOBILE_APP
+    data:
+      title: >-
+        Thread Recovery {{ 'OK' if states('sensor.otbr_thread_state')
+          in ['router', 'leader'] else 'FAILED' }}
+      message: >-
+        {% if states('sensor.otbr_thread_state') in ['router', 'leader'] %}
+        GL-S200 Thread radio recovered. State: {{ states('sensor.otbr_thread_state') }}
+        {% else %}
+        GL-S200 still offline after PoE power cycle. Manual intervention needed.
+        {% endif %}
+  mode: single
+```
+
+**How it works:**
+- **Dual trigger:** fires if the OTBR REST API becomes unreachable (Thread radio dead) OR if the S200 drops off the network entirely. 2-minute delay avoids false positives from brief blips.
+- **15-minute cooldown:** the template condition prevents rapid repeated PoE cycling if the S200 can't recover.
+- **Power cycle via UniFi:** presses the port power cycle button, which does a clean PoE off→on managed by the switch.
+- **Recovery check:** waits 120 seconds (the S200 runs dual ESP32 — an ESP32-S3 application processor + ESP32-H2 Thread radio — and needs ~90s to cold-boot Linux + OTBR daemon), then forces a sensor refresh via `homeassistant.update_entity` (the REST sensor only polls every 60s, so without the force-refresh the state may still read "unavailable"). After a 10-second settle, sends a follow-up notification with the result.
+
+#### C. Scheduled Daily Reboot
+
+Add to `automations.yaml`:
+
+```yaml
+- id: 'gl_s200_scheduled_reboot'
+  alias: GL-S200 Scheduled Reboot
+  description: >-
+    Daily 4 AM preventive reboot of GL-S200 via PoE power cycle
+    to prevent Thread radio firmware drift/memory leak.
+  triggers:
+  - trigger: time
+    at: "04:00:00"
+  conditions: []
+  actions:
+  - action: notify.YOUR_MOBILE_APP
+    data:
+      title: "GL-S200 Scheduled Reboot"
+      message: "Daily 4 AM reboot — cycling PoE port on Flex switch."
+  - action: button.press
+    target:
+      entity_id: button.YOUR_SWITCH_PORT_POWER_CYCLE
+  - delay:
+      seconds: 120
+  - action: homeassistant.update_entity
+    target:
+      entity_id: sensor.otbr_thread_state
+  - delay:
+      seconds: 10
+  - action: notify.YOUR_MOBILE_APP
+    data:
+      title: >-
+        GL-S200 Reboot {{ 'OK' if states('sensor.otbr_thread_state')
+          in ['router', 'leader'] else 'FAILED' }}
+      message: >-
+        {% if states('sensor.otbr_thread_state') in ['router', 'leader'] %}
+        GL-S200 back online after scheduled reboot. Thread state: {{ states('sensor.otbr_thread_state') }}
+        {% else %}
+        GL-S200 did not recover after scheduled reboot. Check manually.
+        {% endif %}
+  mode: single
+```
+
+#### D. Activation
+
+Restart HA to load the new `rest:` sensor (automations reload automatically):
+
+```bash
+cd /path/to/compose && sudo docker compose restart homeassistant
+```
+
+Verify:
+- **Developer Tools → States** → search `sensor.otbr_thread_state` → should show `router` or `leader`
+- **Settings → Automations** → both "GL-S200 Thread Failsafe" and "GL-S200 Scheduled Reboot" should appear
+- **Manual test:** Developer Tools → Services → `automation.trigger` on the failsafe → verify notification arrives
+
+#### Entity Reference
+
+| Entity | Type | Source | Purpose |
+|--------|------|--------|---------|
+| `sensor.otbr_thread_state` | REST sensor | `configuration.yaml` | Thread radio health (router/leader/unavailable) |
+| `device_tracker.gl_s200` | Device tracker | UniFi integration | S200 LAN presence (home/not_home) |
+| `button.*_port_N_power_cycle` | Button | UniFi integration | PoE power cycle on the S200's switch port |
+| `notify.mobile_app_*` | Notify | Companion App | Push notifications to phone |
+
+> **Note:** The UniFi integration also exposes `switch.*_port_N_poe` entities (disabled by default) that give explicit on/off control over PoE power. The power cycle button is simpler for this use case, but the switch entity could be enabled if you ever need a longer off-time (e.g., off → 30s delay → on).
+
+---
+
 ## Network Infrastructure — UDM-SE + USW Flex 2.5G
 
 ### The Problem — UDM-SE Internal Switch Limitations
@@ -908,6 +1079,7 @@ curl -s http://localhost:8091/health                      # Z-Wave JS UI healthy
 | All Matter + CoAP devices unreachable, Zigbee fine | GL-S200 Thread stack is `detached` after reboot. See Step 11 → Thread auto-start fix |
 | matter-server: `Timeout waiting for mDNS resolution` loop | Same root cause — Thread network down on GL-S200. SSH in and check `ot-ctl state` |
 | SSH to GL-S200 hangs during key exchange | S200 services degraded. Power-cycle the device, then verify Thread started |
+| GL-S200 Thread radio dies overnight / after hours | OTBR daemon memory leak. See Step 13 — health monitor + failsafe PoE power cycle + daily 4 AM reboot |
 | TubesZB ESPHome UI only serves HTTP | Expected — ESP32-PoE firmware serves HTTP only, not HTTPS |
 
 ---

@@ -1,0 +1,22 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LD1125H Matter Radar",
+        "description": "Enter the Matter node ID and occupancy-sensor endpoint ID.\nFind the node ID in Settings > Devices & Services > Matter.",
+        "data": {
+          "node_id": "Matter Node ID",
+          "endpoint_id": "Occupancy Sensor Endpoint ID"
+        }
+      }
+    },
+    "error": {
+      "matter_not_ready": "Matter integration is not loaded yet.",
+      "node_not_found": "No Matter node with that ID was found.",
+      "endpoint_not_found": "That endpoint does not exist on the node."
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  }
+}
